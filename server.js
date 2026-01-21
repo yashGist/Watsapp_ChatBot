@@ -1,6 +1,3 @@
-// ====================================
-// IMPORTS FIRST!
-// ====================================
 const express = require("express");
 const axios = require("axios");
 const app = express();
@@ -18,34 +15,40 @@ const RENDER_URL = "https://watsapp-chatbot-ohkb.onrender.com";
 console.log("=".repeat(50));
 console.log("BOT STARTED");
 console.log("=".repeat(50));
-console.log("VERIFY_TOKEN:", VERIFY_TOKEN ? "✅ SET" : "❌ MISSING");
+console.log(
+  "VERIFY_TOKEN:",
+  VERIFY_TOKEN ? `✅ "${VERIFY_TOKEN}"` : "❌ MISSING",
+);
 console.log("WHATSAPP_TOKEN:", WHATSAPP_TOKEN ? "✅ SET" : "❌ MISSING");
-console.log("PHONE_NUMBER_ID:", PHONE_NUMBER_ID ? "✅ SET" : "❌ MISSING");
-console.log("Token length:", WHATSAPP_TOKEN?.length);
-console.log("Token preview:", WHATSAPP_TOKEN?.substring(0, 30) + "...");
+console.log(
+  "PHONE_NUMBER_ID:",
+  PHONE_NUMBER_ID ? `✅ "${PHONE_NUMBER_ID}"` : "❌ MISSING",
+);
 console.log("=".repeat(50));
 
 // ====================================
-// KEEP-ALIVE (NOW axios is available!)
+// KEEP-ALIVE
 // ====================================
 setInterval(async () => {
   try {
     await axios.get(RENDER_URL);
-    console.log("⏰ Keep-alive ping successful");
+    console.log("⏰ Keep-alive ping");
   } catch (error) {
-    console.log("⏰ Keep-alive ping failed:", error.message);
+    console.log("⏰ Keep-alive failed:", error.message);
   }
 }, 30 * 1000);
 
-console.log("⏰ Keep-alive enabled - pinging every 30 seconds");
-
 // ====================================
-// MIDDLEWARE - Log ALL requests
+// MIDDLEWARE
 // ====================================
 app.use((req, res, next) => {
-  console.log(`\n🔔 REQUEST: ${req.method} ${req.path}`);
-  console.log("Headers:", req.headers);
-  console.log("Body:", JSON.stringify(req.body, null, 2));
+  console.log(`\n🔔 ${req.method} ${req.path}`);
+  if (req.method === "POST") {
+    console.log("Body:", JSON.stringify(req.body, null, 2));
+  }
+  if (req.method === "GET" && req.path === "/webhook") {
+    console.log("Query:", req.query);
+  }
   next();
 });
 
@@ -55,7 +58,7 @@ app.use((req, res, next) => {
 
 // Health check
 app.get("/", (req, res) => {
-  res.send("✅ Bot is running");
+  res.send("✅ WhatsApp Bot is RUNNING!");
 });
 
 // Webhook verification (GET)
@@ -64,31 +67,40 @@ app.get("/webhook", (req, res) => {
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
 
-  console.log("📞 Webhook verification attempt");
+  console.log("\n📞 WEBHOOK VERIFICATION");
   console.log("Mode:", mode);
-  console.log("Token match:", token === VERIFY_TOKEN);
+  console.log("Token received:", token);
+  console.log("Token expected:", VERIFY_TOKEN);
+  console.log("Match?", token === VERIFY_TOKEN);
+  console.log("Challenge:", challenge);
 
   if (mode === "subscribe" && token === VERIFY_TOKEN) {
-    console.log("✅ Webhook verified");
-    res.status(200).send(challenge);
+    console.log("✅✅✅ VERIFICATION SUCCESS ✅✅✅\n");
+    return res.status(200).send(challenge);
   } else {
-    console.log("❌ Verification failed");
-    res.sendStatus(403);
+    console.log("❌❌❌ VERIFICATION FAILED ❌❌❌");
+    console.log(
+      "Reason:",
+      !mode ? "No mode" : !token ? "No token" : "Token mismatch",
+    );
+    return res.sendStatus(403);
   }
 });
 
-// Webhook handler (POST)
+// Webhook messages (POST)
 app.post("/webhook", async (req, res) => {
-  console.log("\n" + "=".repeat(50));
-  console.log("🔥 WEBHOOK RECEIVED");
-  console.log("=".repeat(50));
+  console.log("\n" + "🔥".repeat(25));
+  console.log("WEBHOOK MESSAGE RECEIVED");
+  console.log("🔥".repeat(25));
 
   // Send 200 immediately
   res.sendStatus(200);
 
   try {
-    // Extract message
-    const messages = req.body.entry?.[0]?.changes?.[0]?.value?.messages;
+    const entry = req.body.entry?.[0];
+    const changes = entry?.changes?.[0];
+    const value = changes?.value;
+    const messages = value?.messages;
 
     if (!messages || messages.length === 0) {
       console.log("⚠️ No messages in webhook");
@@ -98,11 +110,9 @@ app.post("/webhook", async (req, res) => {
     const message = messages[0];
     const from = message.from;
     const text = message.text?.body;
-    const msgId = message.id;
 
-    console.log("From:", from);
-    console.log("Text:", text);
-    console.log("Message ID:", msgId);
+    console.log("📱 From:", from);
+    console.log("💬 Text:", text);
 
     if (!from || !text) {
       console.log("❌ Missing from or text");
@@ -112,24 +122,16 @@ app.post("/webhook", async (req, res) => {
     // Send reply
     await sendMessage(from, text);
   } catch (error) {
-    console.error("❌ Webhook error:", error.message);
-    console.error(error.stack);
+    console.error("❌ Error processing webhook:", error);
   }
 });
 
 // ====================================
-// HELPER FUNCTIONS
+// SEND MESSAGE FUNCTION
 // ====================================
-
-// Send message function
 async function sendMessage(to, userMsg) {
-  console.log("\n" + "-".repeat(50));
-  console.log("📤 SENDING REPLY");
-  console.log("-".repeat(50));
-  console.log("To:", to);
-  console.log("User message:", userMsg);
+  console.log("\n📤 SENDING REPLY TO:", to);
 
-  // Prepare reply
   let reply = "";
   const msg = userMsg.toLowerCase().trim();
 
@@ -139,86 +141,43 @@ async function sendMessage(to, userMsg) {
   } else if (msg === "1") {
     reply = "📖 About\n\nBuilt with Node.js + WhatsApp Cloud API";
   } else if (msg === "2") {
-    reply =
-      "📞 Support\n\nEmail: support@example.com\nType *hi* to return to menu";
+    reply = "📞 Support\n\nEmail: support@example.com\nType *hi* for menu";
   } else if (msg === "3") {
     reply = "❓ Help\n\nType: hi, 1, 2, 3";
   } else {
     reply = `🤖 You said: "${userMsg}"\n\nType *hi* for menu`;
   }
 
-  console.log("Reply text:", reply);
-
   const url = `https://graph.facebook.com/v24.0/${PHONE_NUMBER_ID}/messages`;
 
-  const payload = {
-    messaging_product: "whatsapp",
-    to: to,
-    type: "text",
-    text: { body: reply },
-  };
-
-  console.log("\nAPI URL:", url);
-  console.log("Using token:", WHATSAPP_TOKEN?.substring(0, 30) + "...");
-
   try {
-    const response = await axios({
-      method: "POST",
-      url: url,
-      headers: {
-        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-        "Content-Type": "application/json",
+    const response = await axios.post(
+      url,
+      {
+        messaging_product: "whatsapp",
+        to: to,
+        type: "text",
+        text: { body: reply },
       },
-      data: payload,
-    });
+      {
+        headers: {
+          Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
 
-    console.log("\n✅✅✅ MESSAGE SENT SUCCESSFULLY ✅✅✅");
-    console.log("Response:", JSON.stringify(response.data, null, 2));
-    console.log("=".repeat(50) + "\n");
+    console.log("✅ MESSAGE SENT!");
+    console.log("Response:", response.data);
   } catch (error) {
-    console.error("\n❌❌❌ SEND FAILED ❌❌❌");
-    console.error("Status:", error.response?.status);
-    console.error("Error data:", JSON.stringify(error.response?.data, null, 2));
-
-    if (error.response?.data?.error) {
-      const err = error.response.data.error;
-      console.error("\n🔴 WhatsApp API Error:");
-      console.error("  Code:", err.code);
-      console.error("  Type:", err.type);
-      console.error("  Message:", err.message);
-      console.error("  Subcode:", err.error_subcode);
-      console.error("  Trace ID:", err.fbtrace_id);
-
-      // Specific solutions
-      if (err.code === 190) {
-        console.error("\n💡 SOLUTION:");
-        console.error("  Your access token has EXPIRED!");
-        console.error("  1. Go to Meta Developer Console");
-        console.error("  2. WhatsApp > API Setup");
-        console.error("  3. Click 'Generate access token'");
-        console.error("  4. Copy the NEW token");
-        console.error("  5. Update WHATSAPP_TOKEN in Render Environment");
-      } else if (err.code === 131031) {
-        console.error("\n💡 SOLUTION:");
-        console.error("  Recipient not in test numbers list");
-        console.error("  Add", to, "to test recipients in Meta dashboard");
-      } else if (err.code === 100) {
-        console.error("\n💡 SOLUTION:");
-        console.error("  Token is missing permissions");
-        console.error("  Regenerate token with proper scopes");
-      }
-    }
-
-    console.log("=".repeat(50) + "\n");
+    console.error("❌ SEND FAILED");
+    console.error("Error:", error.response?.data || error.message);
   }
 }
-
 // ====================================
 // START SERVER
 // ====================================
 app.listen(PORT, () => {
-  console.log(`\n🚀 Server listening on port ${PORT}`);
-  console.log(
-    `📍 Webhook URL: https://watsapp-chatbot-ohkb.onrender.com/webhook\n`,
-  );
+  console.log(`\n🚀 Server running on port ${PORT}`);
+  console.log(`📍 Webhook: ${RENDER_URL}/webhook\n`);
 });
