@@ -1,3 +1,10 @@
+app.post("/webhook", (req, res) => {
+  console.log("🔥🔥 WEBHOOK HIT 🔥🔥");
+  console.log("Headers:", req.headers);
+  console.log("Body:", JSON.stringify(req.body, null, 2));
+  res.status(200).send("OK");
+});
+
 const express = require("express");
 const axios = require("axios");
 require("dotenv").config();
