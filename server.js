@@ -1,34 +1,39 @@
+// ================================
+// IMPORTS
+// ================================
 const express = require("express");
 const axios = require("axios");
 require("dotenv").config();
 
+// ================================
+// APP INIT (⚠️ MUST BE FIRST)
+// ================================
 const app = express();
 app.use(express.json());
 
-/* ----------------------------------
-   ENV VARIABLES
------------------------------------ */
+// ================================
+// ENV VARIABLES
+// ================================
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 
-/* ----------------------------------
-   STARTUP LOGS
------------------------------------ */
+// ================================
+// STARTUP LOGS
+// ================================
 console.log("🔧 Bot Configuration:");
 console.log("PHONE_NUMBER_ID:", PHONE_NUMBER_ID);
-console.log("TOKEN exists:", !!WHATSAPP_TOKEN);
+console.log("WHATSAPP_TOKEN exists:", !!WHATSAPP_TOKEN);
 
-/* ----------------------------------
-   WEBHOOK VERIFICATION (GET)
-   Called once by Meta
------------------------------------ */
+// ================================
+// WEBHOOK VERIFICATION (GET)
+// ================================
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
 
-  console.log("📞 Webhook verification attempt");
+  console.log("📞 Webhook verification request");
 
   if (mode === "subscribe" && token === VERIFY_TOKEN) {
     console.log("✅ Webhook verified");
@@ -39,9 +44,9 @@ app.get("/webhook", (req, res) => {
   return res.sendStatus(403);
 });
 
-/* ----------------------------------
-   RECEIVE WHATSAPP MESSAGES (POST)
------------------------------------ */
+// ================================
+// RECEIVE WHATSAPP MESSAGES (POST)
+// ================================
 app.post("/webhook", async (req, res) => {
   try {
     console.log("🔥 WEBHOOK HIT 🔥");
@@ -65,14 +70,14 @@ app.post("/webhook", async (req, res) => {
 
     res.sendStatus(200);
   } catch (err) {
-    console.error("❌ Webhook error:", err.message);
+    console.error("❌ Webhook error:", err);
     res.sendStatus(500);
   }
 });
 
-/* ----------------------------------
-   SEND REPLY TO WHATSAPP
------------------------------------ */
+// ================================
+// SEND REPLY TO WHATSAPP
+// ================================
 async function sendReply(to, receivedMsg) {
   const msg = receivedMsg.trim().toLowerCase();
   let replyText = "";
@@ -88,7 +93,11 @@ How can I help you today?
   } else if (msg === "1" || msg.includes("about")) {
     replyText = `📖 About Us
 
-We are a demo WhatsApp bot built using Node.js, Express, Render, and WhatsApp Cloud API.
+We are a demo WhatsApp bot built using:
+• Node.js
+• Express
+• Render
+• WhatsApp Cloud API
 
 Send *hi* to see the menu again.`;
   } else if (msg === "2" || msg.includes("support")) {
@@ -117,7 +126,7 @@ Send *hi* to see available options.`;
       {
         messaging_product: "whatsapp",
         to: to,
-        type: "text", // REQUIRED
+        type: "text",
         text: {
           body: replyText,
         },
@@ -133,22 +142,22 @@ Send *hi* to see available options.`;
     console.log("✅ Reply sent");
   } catch (error) {
     console.error(
-      "❌ Send message failed:",
+      "❌ Failed to send message:",
       error.response?.data || error.message,
     );
   }
 }
 
-/* ----------------------------------
-   HEALTH CHECK
------------------------------------ */
+// ================================
+// HEALTH CHECK
+// ================================
 app.get("/", (req, res) => {
   res.send("✅ WhatsApp Bot is running");
 });
 
-/* ----------------------------------
-   START SERVER
------------------------------------ */
+// ================================
+// START SERVER
+// ================================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
