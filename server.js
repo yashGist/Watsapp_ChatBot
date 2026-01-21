@@ -13,7 +13,11 @@ const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 // ================== START LOG ==================
 console.log("🔧 Bot Configuration");
 console.log("PHONE_NUMBER_ID:", PHONE_NUMBER_ID);
-console.log("WHATSAPP_TOKEN exists:", !!WHATSAPP_TOKEN);
+console.log(
+  "WHATSAPP_TOKEN (first 20 chars):",
+  WHATSAPP_TOKEN?.substring(0, 20),
+);
+console.log("WHATSAPP_TOKEN length:", WHATSAPP_TOKEN?.length);
 
 // ================== HEALTH CHECK ==================
 app.get("/", (req, res) => {
@@ -39,90 +43,132 @@ app.get("/webhook", (req, res) => {
 
 // ================== WEBHOOK RECEIVE (POST) ==================
 app.post("/webhook", async (req, res) => {
-  console.log("🔥 WEBHOOK HIT 🔥");
-  console.log(JSON.stringify(req.body, null, 2));
+  console.log("\n\n🔥 ========== NEW WEBHOOK HIT ========== 🔥");
+  console.log("Full body:", JSON.stringify(req.body, null, 2));
+
+  // Respond to Facebook immediately
+  res.sendStatus(200);
 
   try {
     const entry = req.body.entry?.[0];
-    const change = entry?.changes?.[0];
-    const value = change?.value;
+    if (!entry) {
+      console.log("⚠️ No entry in webhook");
+      return;
+    }
 
-    // No messages → ignore
-    if (!value?.messages) {
-      console.log("⚠️ No messages in webhook payload");
-      return res.sendStatus(200);
+    const changes = entry.changes?.[0];
+    if (!changes) {
+      console.log("⚠️ No changes in entry");
+      return;
+    }
+
+    const value = changes.value;
+    if (!value) {
+      console.log("⚠️ No value in changes");
+      return;
+    }
+
+    console.log("✅ Value extracted:", JSON.stringify(value, null, 2));
+
+    // Check for messages
+    if (!value.messages || value.messages.length === 0) {
+      console.log("⚠️ No messages in value - might be a status update");
+      if (value.statuses) {
+        console.log(
+          "📊 Status update:",
+          JSON.stringify(value.statuses, null, 2),
+        );
+      }
+      return;
     }
 
     const message = value.messages[0];
-    const from = message.from; // ✅ USE message.from directly
-    const text = message.text?.body || "";
+    const from = message.from;
     const messageId = message.id;
+    const text = message.text?.body || "";
 
-    console.log(`📩 Message from ${from}: "${text}" [ID: ${messageId}]`);
+    console.log("\n📩 MESSAGE DETAILS:");
+    console.log("  From:", from);
+    console.log("  Message ID:", messageId);
+    console.log("  Text:", text);
+    console.log("  Type:", message.type);
 
-    if (!from || !text) {
-      console.log("⚠️ Missing from or text");
-      return res.sendStatus(200);
+    if (!text) {
+      console.log("⚠️ No text body in message");
+      return;
     }
 
-    // Send reply asynchronously
-    sendReply(from, text).catch((err) => {
-      console.error("❌ Error in sendReply:", err.message);
-    });
-
-    // Respond immediately to Facebook
-    res.sendStatus(200);
+    // Try to send reply
+    console.log("\n📤 Attempting to send reply...");
+    await sendReply(from, text, messageId);
   } catch (err) {
-    console.error(
-      "❌ Webhook handler error:",
-      err.response?.data || err.message,
-    );
-    res.sendStatus(500);
+    console.error("\n❌ ========== WEBHOOK ERROR ========== ❌");
+    console.error("Error message:", err.message);
+    console.error("Error stack:", err.stack);
+    if (err.response) {
+      console.error("Response status:", err.response.status);
+      console.error(
+        "Response data:",
+        JSON.stringify(err.response.data, null, 2),
+      );
+    }
   }
 });
 
 // ================== SEND REPLY ==================
-async function sendReply(to, receivedMsg) {
-  let replyText = "";
+async function sendReply(to, receivedMsg, messageId) {
+  console.log(`\n🎯 sendReply called with:`);
+  console.log(`  To: ${to}`);
+  console.log(`  Message: ${receivedMsg}`);
+  console.log(`  Message ID: ${messageId}`);
 
+  // First, try to mark message as read
+  try {
+    console.log("\n📖 Marking message as read...");
+    const readUrl = `https://graph.facebook.com/v24.0/${PHONE_NUMBER_ID}/messages`;
+
+    await axios.post(
+      readUrl,
+      {
+        messaging_product: "whatsapp",
+        status: "read",
+        message_id: messageId,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+    console.log("✅ Message marked as read");
+  } catch (error) {
+    console.error("⚠️ Failed to mark as read (non-critical)");
+    console.error(JSON.stringify(error.response?.data, null, 2));
+  }
+
+  // Generate reply text
+  let replyText = "";
   const msg = receivedMsg.toLowerCase().trim();
 
   if (msg.includes("hi") || msg.includes("hello") || msg.includes("hey")) {
-    replyText = `👋 Hello!
-
-Welcome to your WhatsApp Bot 🤖
-
-1️⃣ About
-2️⃣ Support
-3️⃣ Help`;
+    replyText =
+      "👋 Hello! Welcome to WhatsApp Bot 🤖\n\n1️⃣ About\n2️⃣ Support\n3️⃣ Help";
   } else if (msg === "1") {
-    replyText = `📖 About
-
-This WhatsApp bot is built using:
-• Node.js
-• Express
-• Render
-• WhatsApp Cloud API`;
+    replyText =
+      "📖 About\n\nThis bot is built with Node.js + WhatsApp Cloud API";
   } else if (msg === "2") {
-    replyText = `📞 Support
-
-Email: support@example.com
-Send *hi* to return to menu`;
+    replyText = "📞 Support\n\nEmail: support@example.com";
   } else if (msg === "3") {
-    replyText = `❓ Help
-
-Type:
-• hi
-• 1
-• 2
-• 3`;
+    replyText = "❓ Help\n\nType: hi, 1, 2, 3";
   } else {
-    replyText = `🤖 You said: "${receivedMsg}"
-
-Type *hi* to see menu.`;
+    replyText = `🤖 You said: "${receivedMsg}"\n\nType *hi* for menu.`;
   }
 
-  const url = `https://graph.facebook.com/v24.0/${PHONE_NUMBER_ID}/messages`;
+  console.log(`\n💬 Reply text prepared: "${replyText}"`);
+
+  // Send the reply
+  const sendUrl = `https://graph.facebook.com/v24.0/${PHONE_NUMBER_ID}/messages`;
 
   const payload = {
     messaging_product: "whatsapp",
@@ -135,40 +181,77 @@ Type *hi* to see menu.`;
     },
   };
 
-  console.log("📤 Sending to:", url);
-  console.log("📦 Payload:", JSON.stringify(payload, null, 2));
+  console.log("\n📡 API Request Details:");
+  console.log("  URL:", sendUrl);
+  console.log("  Payload:", JSON.stringify(payload, null, 2));
+  console.log("  Token (first 20):", WHATSAPP_TOKEN?.substring(0, 20));
 
   try {
-    const response = await axios.post(url, payload, {
+    const response = await axios.post(sendUrl, payload, {
       headers: {
         Authorization: `Bearer ${WHATSAPP_TOKEN}`,
         "Content-Type": "application/json",
       },
     });
 
-    console.log("✅ Message sent successfully");
-    console.log("📬 Response:", JSON.stringify(response.data, null, 2));
+    console.log("\n✅ ========== MESSAGE SENT SUCCESSFULLY ========== ✅");
+    console.log("Response:", JSON.stringify(response.data, null, 2));
   } catch (error) {
-    console.error("❌ Failed to send message");
-    console.error("Status:", error.response?.status);
-    console.error("Error data:", JSON.stringify(error.response?.data, null, 2));
-    console.error("Error message:", error.message);
+    console.error("\n❌ ========== SEND MESSAGE FAILED ========== ❌");
 
-    // Log the full error for debugging
-    if (error.response?.data?.error) {
-      const err = error.response.data.error;
+    if (error.response) {
+      console.error("Status Code:", error.response.status);
+      console.error("Status Text:", error.response.statusText);
       console.error(
-        `🔴 WhatsApp API Error: ${err.message} (Code: ${err.code})`,
+        "Response Headers:",
+        JSON.stringify(error.response.headers, null, 2),
       );
-      console.error(`🔴 Error Type: ${err.type}`);
-      console.error(`🔴 Error Subcode: ${err.error_subcode}`);
-      console.error(`🔴 Trace ID: ${err.fbtrace_id}`);
+      console.error(
+        "Response Data:",
+        JSON.stringify(error.response.data, null, 2),
+      );
+
+      const errData = error.response.data?.error;
+      if (errData) {
+        console.error("\n🔴 WhatsApp API Error Details:");
+        console.error("  Message:", errData.message);
+        console.error("  Type:", errData.type);
+        console.error("  Code:", errData.code);
+        console.error("  Error Subcode:", errData.error_subcode);
+        console.error("  FBTrace ID:", errData.fbtrace_id);
+
+        // Common error explanations
+        if (errData.code === 131031) {
+          console.error(
+            "\n💡 SOLUTION: Add recipient to test phone numbers in Meta dashboard",
+          );
+        } else if (errData.code === 100) {
+          console.error(
+            "\n💡 SOLUTION: Check if token has correct permissions",
+          );
+        } else if (errData.code === 190) {
+          console.error(
+            "\n💡 SOLUTION: Token is invalid or expired - regenerate it",
+          );
+        }
+      }
+    } else if (error.request) {
+      console.error("Request was made but no response received");
+      console.error("Request:", error.request);
+    } else {
+      console.error("Error setting up request:", error.message);
     }
+
+    console.error("\nFull error:", error);
+    throw error;
   }
 }
 
 // ================== START SERVER ==================
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`\n🚀 ========== SERVER STARTED ========== 🚀`);
+  console.log(`Port: ${PORT}`);
+  console.log(`Time: ${new Date().toISOString()}`);
+  console.log("=".repeat(50));
 });
