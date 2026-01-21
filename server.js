@@ -1,6 +1,16 @@
+// Keep the bot awake on Render.com
+setInterval(
+  () => {
+    axios
+      .get("https://watsapp-chatbot-ohkb.onrender.com/")
+      .then(() => console.log("⏰ Keep-alive ping"))
+      .catch(() => {});
+  },
+  5 * 60 * 1000,
+);
+
 const express = require("express");
 const axios = require("axios");
-
 const app = express();
 app.use(express.json());
 // Log ALL incoming requests
