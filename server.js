@@ -1,10 +1,3 @@
-app.post("/webhook", (req, res) => {
-  console.log("🔥🔥 WEBHOOK HIT 🔥🔥");
-  console.log("Headers:", req.headers);
-  console.log("Body:", JSON.stringify(req.body, null, 2));
-  res.status(200).send("OK");
-});
-
 const express = require("express");
 const axios = require("axios");
 require("dotenv").config();
@@ -12,18 +5,23 @@ require("dotenv").config();
 const app = express();
 app.use(express.json());
 
-// ENV
+/* ----------------------------------
+   ENV VARIABLES
+----------------------------------- */
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 
-// Debug
+/* ----------------------------------
+   STARTUP LOGS
+----------------------------------- */
 console.log("🔧 Bot Configuration:");
 console.log("PHONE_NUMBER_ID:", PHONE_NUMBER_ID);
 console.log("TOKEN exists:", !!WHATSAPP_TOKEN);
 
 /* ----------------------------------
    WEBHOOK VERIFICATION (GET)
+   Called once by Meta
 ----------------------------------- */
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
@@ -42,10 +40,13 @@ app.get("/webhook", (req, res) => {
 });
 
 /* ----------------------------------
-   RECEIVE MESSAGES (POST)
+   RECEIVE WHATSAPP MESSAGES (POST)
 ----------------------------------- */
 app.post("/webhook", async (req, res) => {
   try {
+    console.log("🔥 WEBHOOK HIT 🔥");
+    console.log(JSON.stringify(req.body, null, 2));
+
     const entry = req.body.entry?.[0];
     const change = entry?.changes?.[0];
     const value = change?.value;
@@ -60,13 +61,8 @@ app.post("/webhook", async (req, res) => {
 
     console.log(`📩 Message from ${from}: "${text}"`);
 
-    // 🚫 Prevent replying to own messages
-    const myPhoneId = value.metadata?.phone_number_id;
-    if (from === myPhoneId) {
-      return res.sendStatus(200);
-    }
-
     await sendReply(from, text);
+
     res.sendStatus(200);
   } catch (err) {
     console.error("❌ Webhook error:", err.message);
@@ -75,10 +71,10 @@ app.post("/webhook", async (req, res) => {
 });
 
 /* ----------------------------------
-   SEND MESSAGE FUNCTION
+   SEND REPLY TO WHATSAPP
 ----------------------------------- */
 async function sendReply(to, receivedMsg) {
-  const msg = receivedMsg.toLowerCase();
+  const msg = receivedMsg.trim().toLowerCase();
   let replyText = "";
 
   if (msg.includes("hi") || msg.includes("hello") || msg.includes("hey")) {
@@ -108,9 +104,7 @@ Send *hi* for menu.`;
 • hi → Main menu
 • 1 → About us
 • 2 → Support
-• 3 → Help
-
-Try it now 🙂`;
+• 3 → Help`;
   } else {
     replyText = `🤖 I received: "${receivedMsg}"
 
@@ -123,7 +117,7 @@ Send *hi* to see available options.`;
       {
         messaging_product: "whatsapp",
         to: to,
-        type: "text", // ✅ REQUIRED
+        type: "text", // REQUIRED
         text: {
           body: replyText,
         },
