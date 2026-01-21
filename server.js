@@ -3,6 +3,13 @@ const axios = require("axios");
 
 const app = express();
 app.use(express.json());
+// Log ALL incoming requests
+app.use((req, res, next) => {
+  console.log(`\n🔔 REQUEST: ${req.method} ${req.path}`);
+  console.log("Headers:", req.headers);
+  console.log("Body:", JSON.stringify(req.body, null, 2));
+  next();
+});
 
 // Read from process.env directly (Render sets these)
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
