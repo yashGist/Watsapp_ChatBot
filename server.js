@@ -49,21 +49,28 @@ app.post("/webhook", async (req, res) => {
 
     // No messages → ignore
     if (!value?.messages) {
+      console.log("⚠️ No messages in webhook payload");
       return res.sendStatus(200);
     }
 
     const message = value.messages[0];
-    const from = value.contacts?.[0]?.wa_id; // ✅ CORRECT NUMBER
+    const from = message.from; // ✅ USE message.from directly
     const text = message.text?.body || "";
+    const messageId = message.id;
 
-    console.log(`📩 Message from ${from}: "${text}"`);
+    console.log(`📩 Message from ${from}: "${text}" [ID: ${messageId}]`);
 
     if (!from || !text) {
+      console.log("⚠️ Missing from or text");
       return res.sendStatus(200);
     }
 
-    await sendReply(from, text);
+    // Send reply asynchronously
+    sendReply(from, text).catch((err) => {
+      console.error("❌ Error in sendReply:", err.message);
+    });
 
+    // Respond immediately to Facebook
     res.sendStatus(200);
   } catch (err) {
     console.error(
@@ -78,10 +85,10 @@ app.post("/webhook", async (req, res) => {
 async function sendReply(to, receivedMsg) {
   let replyText = "";
 
-  const msg = receivedMsg.toLowerCase();
+  const msg = receivedMsg.toLowerCase().trim();
 
   if (msg.includes("hi") || msg.includes("hello") || msg.includes("hey")) {
-    replyText = `👋 Hello Yash!
+    replyText = `👋 Hello!
 
 Welcome to your WhatsApp Bot 🤖
 
@@ -115,31 +122,48 @@ Type:
 Type *hi* to see menu.`;
   }
 
+  const url = `https://graph.facebook.com/v24.0/${PHONE_NUMBER_ID}/messages`;
+
+  const payload = {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to: to,
+    type: "text",
+    text: {
+      preview_url: false,
+      body: replyText,
+    },
+  };
+
+  console.log("📤 Sending to:", url);
+  console.log("📦 Payload:", JSON.stringify(payload, null, 2));
+
   try {
-    const response = await axios.post(
-      `https://graph.facebook.com/v20.0/${PHONE_NUMBER_ID}/messages`,
-      {
-        messaging_product: "whatsapp",
-        to: to, // ✅ VERIFIED USER NUMBER
-        type: "text",
-        text: {
-          body: replyText,
-        },
+    const response = await axios.post(url, payload, {
+      headers: {
+        Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+        "Content-Type": "application/json",
       },
-      {
-        headers: {
-          Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-          "Content-Type": "application/json",
-        },
-      },
-    );
+    });
 
     console.log("✅ Message sent successfully");
+    console.log("📬 Response:", JSON.stringify(response.data, null, 2));
   } catch (error) {
-    console.error(
-      "❌ Failed to send message:",
-      error.response?.data || error.message,
-    );
+    console.error("❌ Failed to send message");
+    console.error("Status:", error.response?.status);
+    console.error("Error data:", JSON.stringify(error.response?.data, null, 2));
+    console.error("Error message:", error.message);
+
+    // Log the full error for debugging
+    if (error.response?.data?.error) {
+      const err = error.response.data.error;
+      console.error(
+        `🔴 WhatsApp API Error: ${err.message} (Code: ${err.code})`,
+      );
+      console.error(`🔴 Error Type: ${err.type}`);
+      console.error(`🔴 Error Subcode: ${err.error_subcode}`);
+      console.error(`🔴 Trace ID: ${err.fbtrace_id}`);
+    }
   }
 }
 
