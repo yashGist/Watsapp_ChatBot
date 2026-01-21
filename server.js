@@ -5,253 +5,146 @@ require("dotenv").config();
 const app = express();
 app.use(express.json());
 
-// ================== ENV ==================
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 
-// ================== START LOG ==================
-console.log("🔧 Bot Configuration");
-console.log("PHONE_NUMBER_ID:", PHONE_NUMBER_ID);
-console.log(
-  "WHATSAPP_TOKEN (first 20 chars):",
-  WHATSAPP_TOKEN?.substring(0, 20),
-);
-console.log("WHATSAPP_TOKEN length:", WHATSAPP_TOKEN?.length);
+console.log("Bot started");
+console.log("Phone ID:", PHONE_NUMBER_ID);
 
-// ================== HEALTH CHECK ==================
+// Health check
 app.get("/", (req, res) => {
-  res.send("✅ WhatsApp Bot is running");
+  res.send("Bot running");
 });
 
-// ================== WEBHOOK VERIFY (GET) ==================
+// Webhook verification
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
 
-  console.log("📞 Webhook verification request");
-
   if (mode === "subscribe" && token === VERIFY_TOKEN) {
-    console.log("✅ Webhook verified successfully");
-    return res.status(200).send(challenge);
+    console.log("Webhook verified");
+    res.status(200).send(challenge);
+  } else {
+    res.sendStatus(403);
   }
-
-  console.log("❌ Webhook verification failed");
-  return res.sendStatus(403);
 });
 
-// ================== WEBHOOK RECEIVE (POST) ==================
+// Webhook handler
 app.post("/webhook", async (req, res) => {
-  console.log("\n\n🔥 ========== NEW WEBHOOK HIT ========== 🔥");
-  console.log("Full body:", JSON.stringify(req.body, null, 2));
+  console.log("=== WEBHOOK RECEIVED ===");
 
-  // Respond to Facebook immediately
+  // Send 200 immediately
   res.sendStatus(200);
 
   try {
-    const entry = req.body.entry?.[0];
-    if (!entry) {
-      console.log("⚠️ No entry in webhook");
+    // Extract message
+    const messages = req.body.entry?.[0]?.changes?.[0]?.value?.messages;
+
+    if (!messages || messages.length === 0) {
+      console.log("No messages");
       return;
     }
 
-    const changes = entry.changes?.[0];
-    if (!changes) {
-      console.log("⚠️ No changes in entry");
-      return;
-    }
-
-    const value = changes.value;
-    if (!value) {
-      console.log("⚠️ No value in changes");
-      return;
-    }
-
-    console.log("✅ Value extracted:", JSON.stringify(value, null, 2));
-
-    // Check for messages
-    if (!value.messages || value.messages.length === 0) {
-      console.log("⚠️ No messages in value - might be a status update");
-      if (value.statuses) {
-        console.log(
-          "📊 Status update:",
-          JSON.stringify(value.statuses, null, 2),
-        );
-      }
-      return;
-    }
-
-    const message = value.messages[0];
+    const message = messages[0];
     const from = message.from;
-    const messageId = message.id;
-    const text = message.text?.body || "";
+    const text = message.text?.body;
+    const msgId = message.id;
 
-    console.log("\n📩 MESSAGE DETAILS:");
-    console.log("  From:", from);
-    console.log("  Message ID:", messageId);
-    console.log("  Text:", text);
-    console.log("  Type:", message.type);
+    console.log("From:", from);
+    console.log("Text:", text);
+    console.log("ID:", msgId);
 
-    if (!text) {
-      console.log("⚠️ No text body in message");
+    if (!from || !text) {
+      console.log("Missing data");
       return;
     }
 
-    // Try to send reply
-    console.log("\n📤 Attempting to send reply...");
-    await sendReply(from, text, messageId);
-  } catch (err) {
-    console.error("\n❌ ========== WEBHOOK ERROR ========== ❌");
-    console.error("Error message:", err.message);
-    console.error("Error stack:", err.stack);
-    if (err.response) {
-      console.error("Response status:", err.response.status);
-      console.error(
-        "Response data:",
-        JSON.stringify(err.response.data, null, 2),
-      );
-    }
+    // Send reply
+    await sendMessage(from, text);
+  } catch (error) {
+    console.error("Webhook error:", error.message);
   }
 });
 
-// ================== SEND REPLY ==================
-async function sendReply(to, receivedMsg, messageId) {
-  console.log(`\n🎯 sendReply called with:`);
-  console.log(`  To: ${to}`);
-  console.log(`  Message: ${receivedMsg}`);
-  console.log(`  Message ID: ${messageId}`);
+// Send message function
+async function sendMessage(to, userMsg) {
+  console.log("\n--- SENDING MESSAGE ---");
+  console.log("To:", to);
 
-  // First, try to mark message as read
-  try {
-    console.log("\n📖 Marking message as read...");
-    const readUrl = `https://graph.facebook.com/v24.0/${PHONE_NUMBER_ID}/messages`;
-
-    await axios.post(
-      readUrl,
-      {
-        messaging_product: "whatsapp",
-        status: "read",
-        message_id: messageId,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${WHATSAPP_TOKEN}`,
-          "Content-Type": "application/json",
-        },
-      },
-    );
-    console.log("✅ Message marked as read");
-  } catch (error) {
-    console.error("⚠️ Failed to mark as read (non-critical)");
-    console.error(JSON.stringify(error.response?.data, null, 2));
-  }
-
-  // Generate reply text
-  let replyText = "";
-  const msg = receivedMsg.toLowerCase().trim();
+  // Prepare reply
+  let reply = "";
+  const msg = userMsg.toLowerCase().trim();
 
   if (msg.includes("hi") || msg.includes("hello") || msg.includes("hey")) {
-    replyText =
-      "👋 Hello! Welcome to WhatsApp Bot 🤖\n\n1️⃣ About\n2️⃣ Support\n3️⃣ Help";
+    reply =
+      "👋 Hello!\n\nWelcome to WhatsApp Bot\n\n1️⃣ About\n2️⃣ Support\n3️⃣ Help";
   } else if (msg === "1") {
-    replyText =
-      "📖 About\n\nThis bot is built with Node.js + WhatsApp Cloud API";
+    reply = "📖 About\n\nBuilt with Node.js + WhatsApp API";
   } else if (msg === "2") {
-    replyText = "📞 Support\n\nEmail: support@example.com";
+    reply = "📞 Support\n\nEmail: support@example.com";
   } else if (msg === "3") {
-    replyText = "❓ Help\n\nType: hi, 1, 2, 3";
+    reply = "❓ Help\n\nType: hi, 1, 2, 3";
   } else {
-    replyText = `🤖 You said: "${receivedMsg}"\n\nType *hi* for menu.`;
+    reply = `You said: "${userMsg}"\n\nType *hi* for menu`;
   }
 
-  console.log(`\n💬 Reply text prepared: "${replyText}"`);
+  console.log("Reply:", reply);
 
-  // Send the reply
-  const sendUrl = `https://graph.facebook.com/v24.0/${PHONE_NUMBER_ID}/messages`;
-
-  const payload = {
-    messaging_product: "whatsapp",
-    recipient_type: "individual",
-    to: to,
-    type: "text",
-    text: {
-      preview_url: false,
-      body: replyText,
-    },
-  };
-
-  console.log("\n📡 API Request Details:");
-  console.log("  URL:", sendUrl);
-  console.log("  Payload:", JSON.stringify(payload, null, 2));
-  console.log("  Token (first 20):", WHATSAPP_TOKEN?.substring(0, 20));
+  const url = `https://graph.facebook.com/v24.0/${PHONE_NUMBER_ID}/messages`;
 
   try {
-    const response = await axios.post(sendUrl, payload, {
+    const response = await axios({
+      method: "POST",
+      url: url,
       headers: {
         Authorization: `Bearer ${WHATSAPP_TOKEN}`,
         "Content-Type": "application/json",
       },
+      data: {
+        messaging_product: "whatsapp",
+        to: to,
+        type: "text",
+        text: { body: reply },
+      },
     });
 
-    console.log("\n✅ ========== MESSAGE SENT SUCCESSFULLY ========== ✅");
-    console.log("Response:", JSON.stringify(response.data, null, 2));
+    console.log("✅ SUCCESS");
+    console.log("Response:", JSON.stringify(response.data));
   } catch (error) {
-    console.error("\n❌ ========== SEND MESSAGE FAILED ========== ❌");
+    console.error("\n❌ SEND FAILED");
+    console.error("Status:", error.response?.status);
+    console.error("Error:", JSON.stringify(error.response?.data, null, 2));
 
-    if (error.response) {
-      console.error("Status Code:", error.response.status);
-      console.error("Status Text:", error.response.statusText);
-      console.error(
-        "Response Headers:",
-        JSON.stringify(error.response.headers, null, 2),
-      );
-      console.error(
-        "Response Data:",
-        JSON.stringify(error.response.data, null, 2),
-      );
+    // Print specific error details
+    if (error.response?.data?.error) {
+      const err = error.response.data.error;
+      console.error("\n🔴 ERROR DETAILS:");
+      console.error("Code:", err.code);
+      console.error("Message:", err.message);
+      console.error("Type:", err.type);
 
-      const errData = error.response.data?.error;
-      if (errData) {
-        console.error("\n🔴 WhatsApp API Error Details:");
-        console.error("  Message:", errData.message);
-        console.error("  Type:", errData.type);
-        console.error("  Code:", errData.code);
-        console.error("  Error Subcode:", errData.error_subcode);
-        console.error("  FBTrace ID:", errData.fbtrace_id);
-
-        // Common error explanations
-        if (errData.code === 131031) {
-          console.error(
-            "\n💡 SOLUTION: Add recipient to test phone numbers in Meta dashboard",
-          );
-        } else if (errData.code === 100) {
-          console.error(
-            "\n💡 SOLUTION: Check if token has correct permissions",
-          );
-        } else if (errData.code === 190) {
-          console.error(
-            "\n💡 SOLUTION: Token is invalid or expired - regenerate it",
-          );
-        }
+      // Specific fixes
+      if (err.code === 131031) {
+        console.error(
+          "\n💡 FIX: Add +91 91111 27569 to test recipients in Meta dashboard",
+        );
+        console.error("Go to: WhatsApp > API Setup > Step 3");
+      } else if (err.code === 190) {
+        console.error(
+          "\n💡 FIX: Token expired - generate new token in Meta dashboard",
+        );
+      } else if (err.code === 100) {
+        console.error("\n💡 FIX: Token missing permissions");
+      } else if (err.code === 33) {
+        console.error("\n💡 FIX: Phone number not valid");
       }
-    } else if (error.request) {
-      console.error("Request was made but no response received");
-      console.error("Request:", error.request);
-    } else {
-      console.error("Error setting up request:", error.message);
     }
-
-    console.error("\nFull error:", error);
-    throw error;
   }
 }
 
-// ================== START SERVER ==================
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-  console.log(`\n🚀 ========== SERVER STARTED ========== 🚀`);
-  console.log(`Port: ${PORT}`);
-  console.log(`Time: ${new Date().toISOString()}`);
-  console.log("=".repeat(50));
+  console.log(`Server on port ${PORT}`);
 });
