@@ -1,33 +1,19 @@
-// Aggressive keep-alive for Render free tier (every 30 seconds)
-const RENDER_URL = "https://watsapp-chatbot-ohkb.onrender.com";
-
-setInterval(async () => {
-  try {
-    await axios.get(RENDER_URL);
-    console.log("⏰ Keep-alive ping successful");
-  } catch (error) {
-    console.log("⏰ Keep-alive ping failed:", error.message);
-  }
-}, 30 * 1000); // Every 30 seconds
-
-console.log("⏰ Keep-alive enabled - pinging every 30 seconds");
-
+// ====================================
+// IMPORTS FIRST!
+// ====================================
 const express = require("express");
 const axios = require("axios");
 const app = express();
 app.use(express.json());
-// Log ALL incoming requests
-app.use((req, res, next) => {
-  console.log(`\n🔔 REQUEST: ${req.method} ${req.path}`);
-  console.log("Headers:", req.headers);
-  console.log("Body:", JSON.stringify(req.body, null, 2));
-  next();
-});
 
-// Read from process.env directly (Render sets these)
+// ====================================
+// CONFIGURATION
+// ====================================
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
 const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
+const PORT = process.env.PORT || 10000;
+const RENDER_URL = "https://watsapp-chatbot-ohkb.onrender.com";
 
 console.log("=".repeat(50));
 console.log("BOT STARTED");
@@ -39,12 +25,40 @@ console.log("Token length:", WHATSAPP_TOKEN?.length);
 console.log("Token preview:", WHATSAPP_TOKEN?.substring(0, 30) + "...");
 console.log("=".repeat(50));
 
+// ====================================
+// KEEP-ALIVE (NOW axios is available!)
+// ====================================
+setInterval(async () => {
+  try {
+    await axios.get(RENDER_URL);
+    console.log("⏰ Keep-alive ping successful");
+  } catch (error) {
+    console.log("⏰ Keep-alive ping failed:", error.message);
+  }
+}, 30 * 1000);
+
+console.log("⏰ Keep-alive enabled - pinging every 30 seconds");
+
+// ====================================
+// MIDDLEWARE - Log ALL requests
+// ====================================
+app.use((req, res, next) => {
+  console.log(`\n🔔 REQUEST: ${req.method} ${req.path}`);
+  console.log("Headers:", req.headers);
+  console.log("Body:", JSON.stringify(req.body, null, 2));
+  next();
+});
+
+// ====================================
+// ROUTES
+// ====================================
+
 // Health check
 app.get("/", (req, res) => {
   res.send("✅ Bot is running");
 });
 
-// Webhook verification
+// Webhook verification (GET)
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
@@ -63,7 +77,7 @@ app.get("/webhook", (req, res) => {
   }
 });
 
-// Webhook handler
+// Webhook handler (POST)
 app.post("/webhook", async (req, res) => {
   console.log("\n" + "=".repeat(50));
   console.log("🔥 WEBHOOK RECEIVED");
@@ -102,6 +116,10 @@ app.post("/webhook", async (req, res) => {
     console.error(error.stack);
   }
 });
+
+// ====================================
+// HELPER FUNCTIONS
+// ====================================
 
 // Send message function
 async function sendMessage(to, userMsg) {
@@ -195,7 +213,9 @@ async function sendMessage(to, userMsg) {
   }
 }
 
-const PORT = process.env.PORT || 10000;
+// ====================================
+// START SERVER
+// ====================================
 app.listen(PORT, () => {
   console.log(`\n🚀 Server listening on port ${PORT}`);
   console.log(
