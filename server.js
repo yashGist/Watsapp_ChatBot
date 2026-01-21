@@ -1,13 +1,16 @@
-// Keep the bot awake on Render.com
-setInterval(
-  () => {
-    axios
-      .get("https://watsapp-chatbot-ohkb.onrender.com/")
-      .then(() => console.log("⏰ Keep-alive ping"))
-      .catch(() => {});
-  },
-  5 * 60 * 1000,
-);
+// Aggressive keep-alive for Render free tier (every 30 seconds)
+const RENDER_URL = "https://watsapp-chatbot-ohkb.onrender.com";
+
+setInterval(async () => {
+  try {
+    await axios.get(RENDER_URL);
+    console.log("⏰ Keep-alive ping successful");
+  } catch (error) {
+    console.log("⏰ Keep-alive ping failed:", error.message);
+  }
+}, 30 * 1000); // Every 30 seconds
+
+console.log("⏰ Keep-alive enabled - pinging every 30 seconds");
 
 const express = require("express");
 const axios = require("axios");
